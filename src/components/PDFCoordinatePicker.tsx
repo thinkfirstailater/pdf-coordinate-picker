@@ -478,7 +478,7 @@ export default function PDFCoordinatePicker() {
           <p className="text-sm text-[var(--text-secondary)] mb-6">
             or click to browse
           </p>
-          <label className="px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg cursor-pointer transition-colors font-medium text-sm">
+          <label className="px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg cursor-pointer transition-all font-medium text-sm shadow-lg shadow-[var(--accent)]/20 hover:shadow-[var(--accent)]/30">
             Choose File
             <input
               type="file"
@@ -505,24 +505,26 @@ export default function PDFCoordinatePicker() {
         </div>
       )}
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 h-12 bg-[var(--bg-toolbar)] border-b border-[var(--border)] shrink-0">
-        <div className="flex items-center gap-1">
-          <Crosshair size={18} className="text-[var(--accent)] mr-2" />
-          <span className="text-sm font-semibold mr-4">
-            PDF Coordinate Picker
+      <div className="flex items-center justify-between px-5 h-14 bg-[#21252e] border-b border-[#3a3f52] shrink-0">
+        <div className="flex items-center gap-3">
+          <Crosshair size={20} className="text-[var(--accent)] mr-1" />
+          <span className="text-[15px] font-bold tracking-tight text-white mr-3">
+            PDF Picker
           </span>
 
+          <div className="w-px h-6 bg-[#3a3f52]" />
+
           {/* Origin selector */}
-          <div className="relative mr-2" ref={originMenuRef}>
+          <div className="relative" ref={originMenuRef}>
             <button
               onClick={() => setShowOriginMenu((v) => !v)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all cursor-pointer border border-[var(--border)]"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-[#c9cdd6] hover:text-white hover:bg-[#2d323e] transition-all cursor-pointer"
             >
               <span>Origin: {ORIGIN_LABELS[origin]}</span>
-              <ChevronDown size={12} />
+              <ChevronDown size={14} />
             </button>
             {showOriginMenu && (
-              <div className="absolute top-full left-0 mt-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl z-50 min-w-[200px] overflow-hidden">
+              <div className="absolute top-full left-0 mt-1 bg-[#2a2f3d] border border-[#3a3f52] rounded-lg shadow-2xl z-50 min-w-[220px] overflow-hidden py-1">
                 {(
                   Object.entries(ORIGIN_LABELS) as [
                     CoordinateOrigin,
@@ -535,10 +537,10 @@ export default function PDFCoordinatePicker() {
                       setOrigin(key);
                       setShowOriginMenu(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                    className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors ${
                       origin === key
-                        ? "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--border)]/50 hover:text-[var(--text-primary)]"
+                        ? "bg-[var(--accent)] text-white font-semibold"
+                        : "text-[#c9cdd6] hover:bg-[#353a4a] hover:text-white"
                     }`}
                   >
                     {label}
@@ -548,23 +550,23 @@ export default function PDFCoordinatePicker() {
             )}
           </div>
 
+          <div className="w-px h-6 bg-[#3a3f52]" />
+
           <ToolbarButton
             onClick={() => setShowGrid((v) => !v)}
             active={showGrid}
             title="Toggle Grid"
           >
             <Grid3X3 size={16} />
-            <span>Toggle Grid</span>
+            <span>Grid</span>
           </ToolbarButton>
 
           <ToolbarButton onClick={zoomIn} title="Zoom In">
             <ZoomIn size={16} />
-            <span>Zoom +</span>
           </ToolbarButton>
 
           <ToolbarButton onClick={zoomOut} title="Zoom Out">
             <ZoomOut size={16} />
-            <span>Zoom −</span>
           </ToolbarButton>
 
           <ToolbarButton
@@ -582,7 +584,7 @@ export default function PDFCoordinatePicker() {
             title="Export JSON"
           >
             <Download size={16} />
-            <span>Export JSON</span>
+            <span>Export</span>
           </ToolbarButton>
 
           <ToolbarButton
@@ -591,10 +593,9 @@ export default function PDFCoordinatePicker() {
             title="Toggle Tooltip"
           >
             {showTooltip ? <Eye size={16} /> : <EyeOff size={16} />}
-            <span>Toggle Tooltip</span>
           </ToolbarButton>
 
-          <div className="w-px h-5 bg-[var(--border)] mx-1" />
+          <div className="w-px h-6 bg-[#3a3f52]" />
 
           <ToolbarButton
             onClick={autoPick}
@@ -611,26 +612,25 @@ export default function PDFCoordinatePicker() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="text-xs font-mono text-[var(--text-secondary)]">
-            <span>x: </span>
-            <span className="text-[var(--text-primary)] min-w-[50px] inline-block">
-              {cursorDisplay ? cursorDisplay.x.toFixed(2) : "-"}
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-[#181b24] rounded-lg">
+            <span className="text-[13px] font-mono text-[#8b8fa3]">
+              x <span className="text-white font-semibold">{cursorDisplay ? cursorDisplay.x.toFixed(1) : "—"}</span>
             </span>
-            <span className="ml-3">y: </span>
-            <span className="text-[var(--text-primary)] min-w-[50px] inline-block">
-              {cursorDisplay ? cursorDisplay.y.toFixed(2) : "-"}
+            <span className="text-[#3a3f52]">|</span>
+            <span className="text-[13px] font-mono text-[#8b8fa3]">
+              y <span className="text-white font-semibold">{cursorDisplay ? cursorDisplay.y.toFixed(1) : "—"}</span>
             </span>
           </div>
 
-          <div className="text-xs text-[var(--text-secondary)]">
+          <span className="text-[12px] font-mono text-[#8b8fa3]">
             {Math.round(scale * 100)}%
-          </div>
+          </span>
 
-          <div className="text-[10px] text-[var(--text-secondary)]">
-            {Math.round(pageSize.width)} x {Math.round(pageSize.height)} pt
-          </div>
+          <span className="text-[11px] text-[#666b80]">
+            {Math.round(pageSize.width)}x{Math.round(pageSize.height)}
+          </span>
 
-          <label className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] cursor-pointer transition-colors">
+          <label className="px-3 py-1.5 text-[13px] font-medium text-[var(--danger)] hover:text-white hover:bg-[var(--danger)] rounded-lg cursor-pointer transition-all border border-[var(--danger)]/40 hover:border-[var(--danger)]">
             Change PDF
             <input
               type="file"
@@ -645,7 +645,7 @@ export default function PDFCoordinatePicker() {
       <div className="flex flex-1 overflow-hidden">
         {/* Page sidebar */}
         <div className="w-[160px] bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col shrink-0">
-          <div className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border)]">
+          <div className="px-3 py-2.5 text-[11px] font-bold text-[var(--text-primary)] uppercase tracking-wider border-b border-[var(--border-light)] bg-[var(--bg-toolbar)]">
             Pages
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
@@ -732,7 +732,7 @@ export default function PDFCoordinatePicker() {
                         y1={0}
                         x2={x * scale}
                         y2={pageSize.height * scale}
-                        stroke="rgba(233,69,96,0.15)"
+                        stroke="rgba(108,99,255,0.15)"
                         strokeWidth={1}
                       />
                       <text
@@ -764,7 +764,7 @@ export default function PDFCoordinatePicker() {
                         y1={y * scale}
                         x2={pageSize.width * scale}
                         y2={y * scale}
-                        stroke="rgba(233,69,96,0.15)"
+                        stroke="rgba(108,99,255,0.15)"
                         strokeWidth={1}
                       />
                       <text
@@ -881,53 +881,82 @@ export default function PDFCoordinatePicker() {
           </div>
 
           {/* Bottom bar */}
-          <div className="flex items-center justify-center gap-4 h-10 bg-[var(--bg-secondary)] border-t border-[var(--border)] shrink-0">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage <= 1}
-              className="p-1 rounded hover:bg-[var(--border)] disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs text-[var(--text-secondary)]">
-              Page{" "}
-              <span className="text-[var(--text-primary)] font-medium">
-                {currentPage}
-              </span>{" "}
-              of{" "}
-              <span className="text-[var(--text-primary)] font-medium">
-                {numPages}
+          <div className="flex items-center justify-center gap-4 h-12 bg-[#21252e] border-t border-[#3a3f52] shrink-0">
+            <div className="flex items-center gap-0.5 bg-[#181b24] rounded-lg px-1 py-1">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="p-1.5 rounded-md hover:bg-[#2d323e] disabled:opacity-20 transition-colors cursor-pointer text-[#9499b0] hover:text-white"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-[13px] text-[#9499b0] px-3 min-w-[80px] text-center font-medium">
+                <span className="text-white font-semibold">
+                  {currentPage}
+                </span>
+                <span className="mx-1.5 text-[#3a3f52]">/</span>
+                <span>{numPages}</span>
               </span>
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-              disabled={currentPage >= numPages}
-              className="p-1 rounded hover:bg-[var(--border)] disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight size={16} />
-            </button>
-
-            <div className="text-[10px] text-[var(--text-secondary)] ml-4">
-              {currentPagePoints.length} point
-              {currentPagePoints.length !== 1 ? "s" : ""} on this page |{" "}
-              {points.length} total
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+                disabled={currentPage >= numPages}
+                className="p-1.5 rounded-md hover:bg-[#2d323e] disabled:opacity-20 transition-colors cursor-pointer text-[#9499b0] hover:text-white"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
+
+            <div className="w-px h-5 bg-[#3a3f52]" />
+
+            <div className="flex items-center gap-3 text-[13px] font-medium">
+              <span className="text-[#9499b0]">
+                <span className="text-[var(--accent)] font-semibold">{currentPagePoints.length}</span> on page
+              </span>
+              <span className="text-[#3a3f52]">|</span>
+              <span className="text-[#9499b0]">
+                <span className="text-white font-semibold">{points.length}</span> total
+              </span>
+            </div>
+
+            {currentPagePoints.length > 0 && (
+              <>
+                <div className="w-px h-5 bg-[#3a3f52]" />
+                <button
+                  onClick={() => {
+                    setPoints((prev) => prev.filter((p) => p.page !== currentPage));
+                    setSelectedPoint(null);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  Clear Page
+                </button>
+              </>
+            )}
           </div>
         </div>
 
         {/* Right sidebar */}
-        <div className="w-[260px] bg-[var(--bg-secondary)] border-l border-[var(--border)] flex flex-col shrink-0">
-          <div className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border)] flex items-center justify-between">
-            <span>Coordinates</span>
-            <span className="text-[var(--accent)]">{points.length}</span>
+        <div className="w-[280px] bg-[var(--bg-secondary)] border-l border-[var(--border-light)] flex flex-col shrink-0">
+          <div className="px-4 py-3 border-b border-[var(--border-light)] flex items-center justify-between bg-[var(--bg-toolbar)]">
+            <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Points</span>
+            <span className="text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent-glow)] px-2 py-0.5 rounded-full">
+              {points.length}
+            </span>
           </div>
           <div className="flex-1 overflow-y-auto">
             {points.length === 0 ? (
-              <div className="p-4 text-xs text-[var(--text-secondary)] text-center">
-                Click on the PDF to add coordinate points
+              <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+                <Crosshair size={28} className="text-[var(--border-light)] mb-3" />
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Click on the PDF to pick points
+                </p>
+                <p className="text-[10px] text-[var(--text-secondary)] opacity-50 mt-1">
+                  or use Auto Pick
+                </p>
               </div>
             ) : (
-              <div className="divide-y divide-[var(--border)]">
+              <div className="p-2 space-y-1">
                 {points.map((point, index) => {
                   const display = screenToDisplay(
                     point.screenX,
@@ -936,38 +965,41 @@ export default function PDFCoordinatePicker() {
                     pageSize.height,
                     origin
                   );
+                  const isSelected = selectedPoint === point.id;
+                  const isCurrentPage = point.page === currentPage;
                   return (
                     <div
                       key={point.id}
-                      className={`px-3 py-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
-                        selectedPoint === point.id
-                          ? "bg-[var(--accent)]/10"
-                          : "hover:bg-[var(--border)]/30"
-                      }`}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs cursor-pointer transition-all ${
+                        isSelected
+                          ? "bg-[var(--accent)]/15 border border-[var(--accent)]/30"
+                          : "hover:bg-[var(--bg-elevated)] border border-transparent"
+                      } ${!isCurrentPage ? "opacity-50" : ""}`}
                       onClick={() => {
                         setSelectedPoint(point.id);
-                        if (point.page !== currentPage) {
-                          setCurrentPage(point.page);
-                        }
+                        if (!isCurrentPage) setCurrentPage(point.page);
                       }}
                     >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                            selectedPoint === point.id
-                              ? "bg-[var(--accent)] text-white"
-                              : "bg-[var(--border)] text-[var(--text-secondary)]"
-                          }`}
-                        >
-                          {index + 1}
-                        </span>
-                        <div>
-                          <div className="font-mono text-[var(--text-primary)]">
-                            x: {display.x} &nbsp; y: {display.y}
+                      <span
+                        className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                          isSelected
+                            ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/30"
+                            : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        {point.label && (
+                          <div className="text-[10px] text-[var(--accent)] font-medium truncate mb-0.5">
+                            {point.label}
                           </div>
-                          <div className="text-[var(--text-secondary)] text-[10px]">
-                            Page {point.page}
-                          </div>
+                        )}
+                        <div className="font-mono text-[11px] text-[var(--text-primary)]">
+                          {display.x}, {display.y}
+                        </div>
+                        <div className="text-[var(--text-secondary)] text-[9px] mt-0.5">
+                          Page {point.page}
                         </div>
                       </div>
                       <button
@@ -975,7 +1007,8 @@ export default function PDFCoordinatePicker() {
                           e.stopPropagation();
                           deletePoint(point.id);
                         }}
-                        className="p-1 rounded hover:bg-[var(--accent)]/20 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                        className="p-1.5 rounded-md hover:bg-[var(--danger)]/10 text-[var(--text-secondary)] hover:text-[var(--danger)] transition-all opacity-0 group-hover:opacity-100 shrink-0"
+                        style={{ opacity: isSelected ? 1 : undefined }}
                       >
                         <Trash2 size={12} />
                       </button>
@@ -986,12 +1019,11 @@ export default function PDFCoordinatePicker() {
             )}
           </div>
 
-          {/* Usage hint */}
-          <div className="px-3 py-2 border-t border-[var(--border)] text-[10px] text-[var(--text-secondary)] leading-relaxed">
-            <div className="font-semibold text-[var(--text-primary)] mb-1">
-              pdf-lib usage:
+          <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--bg-toolbar)]">
+            <div className="text-[10px] font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wider">
+              pdf-lib usage
             </div>
-            <code className="block bg-[var(--bg-primary)] rounded p-1.5 text-[9px] font-mono">
+            <code className="block bg-[var(--bg-primary)] rounded-md p-2 text-[10px] font-mono text-[var(--accent)]/80 leading-relaxed">
               page.drawText(&apos;Hi&apos;, {"{"} x: 50, y: 100 {"}"})
             </code>
           </div>
@@ -1032,12 +1064,12 @@ function OriginIndicator({
 
   return (
     <g>
-      <circle cx={cx} cy={cy} r={6} fill="rgba(233,69,96,0.8)" />
-      <circle cx={cx} cy={cy} r={10} fill="none" stroke="rgba(233,69,96,0.4)" strokeWidth={2} />
+      <circle cx={cx} cy={cy} r={6} fill="rgba(108,99,255,0.8)" />
+      <circle cx={cx} cy={cy} r={10} fill="none" stroke="rgba(108,99,255,0.4)" strokeWidth={2} />
       <text
         x={cx + (origin.includes("left") ? 14 : -14)}
         y={cy + (origin.includes("bottom") ? -10 : 16)}
-        fill="rgba(233,69,96,0.8)"
+        fill="rgba(108,99,255,0.8)"
         fontSize={11}
         fontWeight="bold"
         fontFamily="monospace"
@@ -1067,10 +1099,10 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
         active
-          ? "bg-[var(--accent)] text-white"
-          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5"
+          ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25"
+          : "text-[#9499b0] hover:text-white hover:bg-[#2d323e]"
       } ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
     >
       {children}
