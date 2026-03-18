@@ -1,0 +1,113 @@
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+function buildPrompt(origin: string) {
+  return `You are a PDF form analyzer. I will give you text items extracted from ONE page of a PDF form with coordinates.
+
+Your task: Identify ONLY the fillable form fields — fields that a user needs to input data into (text inputs, checkboxes, date fields, signature areas).
+
+Return ONLY a valid JSON array, no explanation, no markdown fences:
+
+[
+  { "label": "Họ và tên/ Full name", "type": "text", "x": 200, "y": 616.21 },
+  { "label": "Cá nhân/ Individual", "type": "checkbox", "x": 180, "y": 580 }
+]
+
+Field types: "text", "checkbox", "date", "signature"
+
+Rules:
+- x, y = the position of the input area where value should be filled, NOT the label position
+- Merge bilingual labels (VN/EN) into one (e.g. "Họ và tên/ Full name")
+- Only return fillable fields. Skip headers, instructions, company info, decorations
+- Estimate input position based on layout context (usually to the right of or below the label)
+- Coordinate system: PDF points, origin ${origin}
+- The extracted text items below use origin bottom-left. You MUST convert x, y in your response to origin ${origin}.
+
+Here is the extracted data:
+`;
+}
+
+interface TextItem {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface AutoPickResult {
+  label: string;
+  type: string;
+  x: number;
+  y: number;
+}
+
+export async function POST(request: NextRequest) {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey || apiKey === "your_google_studio_api_key_here") {
+    return NextResponse.json(
+      { error: "GOOGLE_AI_API_KEY not configured in .env.local" },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const { items, page, pageWidth, pageHeight, origin = "bottom-left" } = body as {
+      items: TextItem[];
+      page: number;
+      pageWidth: number;
+      pageHeight: number;
+      origin?: string;
+    };
+
+    if (!items?.length) {
+      return NextResponse.json(
+        { error: "No text items provided" },
+        { status: 400 }
+      );
+    }
+
+    const pageContext = JSON.stringify(
+      { page, width: pageWidth, height: pageHeight, items },
+      null,
+      2
+    );
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const result = await model.generateContent(buildPrompt(origin) + pageContext);
+    const responseText = result.response.text();
+
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return NextResponse.json(
+        { error: "Failed to parse AI response", raw: responseText },
+        { status: 500 }
+      );
+    }
+
+    const fields: AutoPickResult[] = JSON.parse(jsonMatch[0]);
+
+    const validated = fields
+      .filter(
+        (f) =>
+          typeof f.label === "string" &&
+          typeof f.x === "number" &&
+          typeof f.y === "number"
+      )
+      .map((f) => ({
+        label: f.label,
+        type: f.type || "text",
+        page,
+        x: f.x,
+        y: f.y,
+      }));
+
+    return NextResponse.json({ fields: validated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

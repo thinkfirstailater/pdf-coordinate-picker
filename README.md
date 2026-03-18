@@ -24,3 +24,6 @@ Open [http://localhost:3000](http://localhost:3000)
 | Coordinate List | View, select, and manage picked coordinates |
 | Undo | Undo last picked coordinate |
 | Export | Download coordinates as JSON |
+
+## ENV
+GOOGLE_AI_API_KEY

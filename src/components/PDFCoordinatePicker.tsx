@@ -18,6 +18,8 @@ import {
   Crosshair,
   Trash2,
   ChevronDown,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -40,6 +42,7 @@ interface ScreenPoint {
   screenX: number;
   screenY: number;
   page: number;
+  label?: string;
 }
 
 function screenToDisplay(
@@ -95,6 +98,7 @@ export default function PDFCoordinatePicker() {
     y: number;
     pointId: string;
   } | null>(null);
+  const [isAutoPicking, setIsAutoPicking] = useState(false);
 
   const pageRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -273,7 +277,11 @@ export default function PDFCoordinatePicker() {
   );
 
   const exportJSON = useCallback(() => {
-    const data = points.map((pt) => {
+    const sorted = [...points].sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      return a.screenY - b.screenY;
+    });
+    const data = sorted.map((pt, i) => {
       const display = screenToDisplay(
         pt.screenX,
         pt.screenY,
@@ -281,7 +289,13 @@ export default function PDFCoordinatePicker() {
         pageSize.height,
         origin
       );
-      return { x: display.x, y: display.y, page: pt.page };
+      return {
+        index: i + 1,
+        label: pt.label || "",
+        x: display.x,
+        y: display.y,
+        page: pt.page,
+      };
     });
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -302,6 +316,88 @@ export default function PDFCoordinatePicker() {
     () => setScale((s) => Math.max(s - 0.25, 0.25)),
     []
   );
+
+  const autoPick = useCallback(async () => {
+    if (!fileUrl || isAutoPicking || pageSize.width === 0) return;
+    setIsAutoPicking(true);
+    try {
+      const pdf = await pdfjs.getDocument(fileUrl).promise;
+      const page = await pdf.getPage(currentPage);
+      const textContent = await page.getTextContent();
+
+      const items = textContent.items
+        .filter(
+          (item): item is typeof item & { str: string; transform: number[]; width: number; height: number } =>
+            "str" in item && !!(item as { str: string }).str.trim()
+        )
+        .map((item) => ({
+          text: item.str,
+          x: item.transform[4],
+          y: item.transform[5],
+          width: item.width,
+          height: item.height,
+        }));
+
+      if (!items.length) {
+        alert("No text found on this page");
+        return;
+      }
+
+      const res = await fetch("/api/auto-pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items,
+          page: currentPage,
+          pageWidth: pageSize.width,
+          pageHeight: pageSize.height,
+          origin,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Auto pick failed");
+        return;
+      }
+
+      const newPoints: ScreenPoint[] = data.fields.map(
+        (f: { label: string; x: number; y: number; page: number }) => {
+          let screenX: number, screenY: number;
+          switch (origin) {
+            case "bottom-left":
+              screenX = f.x;
+              screenY = pageSize.height - f.y;
+              break;
+            case "top-left":
+              screenX = f.x;
+              screenY = f.y;
+              break;
+            case "bottom-right":
+              screenX = pageSize.width - f.x;
+              screenY = pageSize.height - f.y;
+              break;
+            case "top-right":
+              screenX = pageSize.width - f.x;
+              screenY = f.y;
+              break;
+          }
+          return {
+            id: crypto.randomUUID(),
+            screenX,
+            screenY,
+            page: f.page,
+            label: f.label,
+          };
+        }
+      );
+      setPoints((prev) => [...prev, ...newPoints]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Auto pick failed");
+    } finally {
+      setIsAutoPicking(false);
+    }
+  }, [fileUrl, isAutoPicking, currentPage, pageSize, origin]);
 
   const currentPagePoints = useMemo(
     () => points.filter((p) => p.page === currentPage),
@@ -397,7 +493,17 @@ export default function PDFCoordinatePicker() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-primary)]">
+    <div className="h-screen flex flex-col bg-[var(--bg-primary)] relative">
+      {isAutoPicking && (
+        <div className="absolute inset-0 z-[100] bg-black/60 flex items-center justify-center backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 size={40} className="animate-spin text-[var(--accent)]" />
+            <span className="text-sm font-medium text-white">
+              AI is analyzing page {currentPage}...
+            </span>
+          </div>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 h-12 bg-[var(--bg-toolbar)] border-b border-[var(--border)] shrink-0">
         <div className="flex items-center gap-1">
@@ -486,6 +592,21 @@ export default function PDFCoordinatePicker() {
           >
             {showTooltip ? <Eye size={16} /> : <EyeOff size={16} />}
             <span>Toggle Tooltip</span>
+          </ToolbarButton>
+
+          <div className="w-px h-5 bg-[var(--border)] mx-1" />
+
+          <ToolbarButton
+            onClick={autoPick}
+            disabled={isAutoPicking}
+            title="Auto Pick (AI)"
+          >
+            {isAutoPicking ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Sparkles size={16} />
+            )}
+            <span>{isAutoPicking ? "Picking..." : "Auto Pick"}</span>
           </ToolbarButton>
         </div>
 
