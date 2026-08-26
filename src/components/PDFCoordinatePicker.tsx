@@ -20,6 +20,11 @@ import {
   ChevronDown,
   Sparkles,
   Loader2,
+  Key,
+  ShieldCheck,
+  Lock,
+  ExternalLink,
+  X,
 } from "lucide-react";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -29,6 +34,9 @@ type CoordinateOrigin =
   | "top-left"
   | "bottom-right"
   | "top-right";
+
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const ORIGIN_LABELS: Record<CoordinateOrigin, string> = {
   "bottom-left": "Bottom-Left (pdf-lib)",
@@ -99,11 +107,33 @@ export default function PDFCoordinatePicker() {
     pointId: string;
   } | null>(null);
   const [isAutoPicking, setIsAutoPicking] = useState(false);
+  const [userApiKey, setUserApiKey] = useState("");
+  const [hasServerKey, setHasServerKey] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const pageRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const originMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Check server key configuration and load client key from localStorage
+  useEffect(() => {
+    try {
+      const savedKey = localStorage.getItem("google_ai_api_key") || "";
+      if (savedKey) setUserApiKey(savedKey);
+    } catch {
+      // localStorage may be unavailable
+    }
+
+    fetch("/api/auto-pick")
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.hasServerKey === "boolean") {
+          setHasServerKey(data.hasServerKey);
+        }
+      })
+      .catch(() => { });
+  }, []);
 
   const cursorDisplay = useMemo(() => {
     if (!cursorScreen || pageSize.width === 0) return null;
@@ -143,29 +173,47 @@ export default function PDFCoordinatePicker() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const loadPdfFile = useCallback((selected: File) => {
+    if (selected.type !== "application/pdf" && !selected.name.toLowerCase().endsWith(".pdf")) {
+      alert("Please upload a valid PDF file (.pdf)");
+      return false;
+    }
+    if (selected.size > MAX_FILE_SIZE_BYTES) {
+      const actualSizeMB = (selected.size / (1024 * 1024)).toFixed(1);
+      alert(
+        `File size exceeds the ${MAX_FILE_SIZE_MB}MB limit (${actualSizeMB}MB). Please upload a smaller PDF file.`
+      );
+      return false;
+    }
+    setFile(selected);
+    setCurrentPage(1);
+    setPoints([]);
+    setSelectedPoint(null);
+    return true;
+  }, []);
+
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = e.target.files?.[0];
-      if (selected?.type === "application/pdf") {
-        setFile(selected);
-        setCurrentPage(1);
-        setPoints([]);
-        setSelectedPoint(null);
+      if (selected) {
+        loadPdfFile(selected);
       }
+      // Reset input value so re-uploading the same file works if needed
+      e.target.value = "";
     },
-    []
+    [loadPdfFile]
   );
 
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const dropped = e.dataTransfer.files[0];
-    if (dropped?.type === "application/pdf") {
-      setFile(dropped);
-      setCurrentPage(1);
-      setPoints([]);
-      setSelectedPoint(null);
-    }
-  }, []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const dropped = e.dataTransfer.files?.[0];
+      if (dropped) {
+        loadPdfFile(dropped);
+      }
+    },
+    [loadPdfFile]
+  );
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -317,87 +365,108 @@ export default function PDFCoordinatePicker() {
     []
   );
 
-  const autoPick = useCallback(async () => {
-    if (!fileUrl || isAutoPicking || pageSize.width === 0) return;
-    setIsAutoPicking(true);
-    try {
-      const pdf = await pdfjs.getDocument(fileUrl).promise;
-      const page = await pdf.getPage(currentPage);
-      const textContent = await page.getTextContent();
+  const autoPick = useCallback(
+    async (overrideKey?: string) => {
+      if (!fileUrl || isAutoPicking || pageSize.width === 0) return;
 
-      const items = textContent.items
-        .filter(
-          (item): item is typeof item & { str: string; transform: number[]; width: number; height: number } =>
-            "str" in item && !!(item as { str: string }).str.trim()
-        )
-        .map((item) => ({
-          text: item.str,
-          x: item.transform[4],
-          y: item.transform[5],
-          width: item.width,
-          height: item.height,
-        }));
-
-      if (!items.length) {
-        alert("No text found on this page");
+      const activeKey = (overrideKey !== undefined ? overrideKey : userApiKey).trim();
+      if (!hasServerKey && !activeKey) {
+        setShowApiKeyModal(true);
         return;
       }
 
-      const res = await fetch("/api/auto-pick", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items,
-          page: currentPage,
-          pageWidth: pageSize.width,
-          pageHeight: pageSize.height,
-          origin,
-        }),
-      });
+      setIsAutoPicking(true);
+      try {
+        const pdf = await pdfjs.getDocument(fileUrl).promise;
+        const page = await pdf.getPage(currentPage);
+        const textContent = await page.getTextContent();
 
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Auto pick failed");
-        return;
-      }
+        const items = textContent.items
+          .filter(
+            (item): item is typeof item & { str: string; transform: number[]; width: number; height: number } =>
+              "str" in item && !!(item as { str: string }).str.trim()
+          )
+          .map((item) => ({
+            text: item.str,
+            x: item.transform[4],
+            y: item.transform[5],
+            width: item.width,
+            height: item.height,
+          }));
 
-      const newPoints: ScreenPoint[] = data.fields.map(
-        (f: { label: string; x: number; y: number; page: number }) => {
-          let screenX: number, screenY: number;
-          switch (origin) {
-            case "bottom-left":
-              screenX = f.x;
-              screenY = pageSize.height - f.y;
-              break;
-            case "top-left":
-              screenX = f.x;
-              screenY = f.y;
-              break;
-            case "bottom-right":
-              screenX = pageSize.width - f.x;
-              screenY = pageSize.height - f.y;
-              break;
-            case "top-right":
-              screenX = pageSize.width - f.x;
-              screenY = f.y;
-              break;
-          }
-          return {
-            id: crypto.randomUUID(),
-            screenX,
-            screenY,
-            page: f.page,
-            label: f.label,
-          };
+        if (!items.length) {
+          alert("No text found on this page");
+          return;
         }
-      );
-      setPoints((prev) => [...prev, ...newPoints]);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Auto pick failed");
-    } finally {
-      setIsAutoPicking(false);
-    }
-  }, [fileUrl, isAutoPicking, currentPage, pageSize, origin]);
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (activeKey) {
+          headers["X-API-Key"] = activeKey;
+        }
+
+        const res = await fetch("/api/auto-pick", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            items,
+            page: currentPage,
+            pageWidth: pageSize.width,
+            pageHeight: pageSize.height,
+            origin,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.code === "API_KEY_REQUIRED") {
+            setShowApiKeyModal(true);
+            return;
+          }
+          alert(data.error || "Auto pick failed");
+          return;
+        }
+
+        const newPoints: ScreenPoint[] = data.fields.map(
+          (f: { label: string; x: number; y: number; page: number }) => {
+            let screenX: number, screenY: number;
+            switch (origin) {
+              case "bottom-left":
+                screenX = f.x;
+                screenY = pageSize.height - f.y;
+                break;
+              case "top-left":
+                screenX = f.x;
+                screenY = f.y;
+                break;
+              case "bottom-right":
+                screenX = pageSize.width - f.x;
+                screenY = pageSize.height - f.y;
+                break;
+              case "top-right":
+                screenX = pageSize.width - f.x;
+                screenY = f.y;
+                break;
+            }
+            return {
+              id: crypto.randomUUID(),
+              screenX,
+              screenY,
+              page: f.page,
+              label: f.label,
+            };
+          }
+        );
+        setPoints((prev) => [...prev, ...newPoints]);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Auto pick failed");
+      } finally {
+        setIsAutoPicking(false);
+      }
+    },
+    [fileUrl, isAutoPicking, pageSize, userApiKey, hasServerKey, currentPage, origin]
+  );
 
   const currentPagePoints = useMemo(
     () => points.filter((p) => p.page === currentPage),
@@ -462,7 +531,23 @@ export default function PDFCoordinatePicker() {
 
   if (!file || !fileUrl) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+      <div className="h-screen flex flex-col items-center justify-center bg-[var(--bg-primary)] relative">
+        <div className="absolute top-4 right-5">
+          <button
+            onClick={() => setShowApiKeyModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1c202e] hover:bg-[#282d3e] text-[#9ca3af] hover:text-white border border-[#2f3450] transition-colors cursor-pointer"
+          >
+            <Key size={14} className={userApiKey ? "text-[var(--accent)]" : hasServerKey ? "text-[var(--success)]" : "text-[#9ca3af]"} />
+            <span>
+              {userApiKey
+                ? "Custom AI Key"
+                : hasServerKey
+                  ? "Server Key Active"
+                  : "Configure AI Key"}
+            </span>
+          </button>
+        </div>
+
         <div
           onDrop={onDrop}
           onDragOver={onDragOver}
@@ -475,8 +560,11 @@ export default function PDFCoordinatePicker() {
           <p className="text-lg font-medium text-[var(--text-primary)] mb-2">
             Drop your PDF here
           </p>
-          <p className="text-sm text-[var(--text-secondary)] mb-6">
+          <p className="text-sm text-[var(--text-secondary)] mb-1">
             or click to browse
+          </p>
+          <p className="text-[11px] text-[#6e748b] mb-6 font-mono">
+            Supported format: PDF (up to {MAX_FILE_SIZE_MB}MB)
           </p>
           <label className="px-6 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg cursor-pointer transition-all font-medium text-sm shadow-lg shadow-[var(--accent)]/20 hover:shadow-[var(--accent)]/30">
             Choose File
@@ -488,6 +576,28 @@ export default function PDFCoordinatePicker() {
             />
           </label>
         </div>
+
+        {showApiKeyModal && (
+          <ApiKeyModal
+            isOpen={showApiKeyModal}
+            onClose={() => setShowApiKeyModal(false)}
+            currentKey={userApiKey}
+            hasServerKey={hasServerKey}
+            onSave={(key, remember) => {
+              setUserApiKey(key);
+              try {
+                if (remember && key) {
+                  localStorage.setItem("google_ai_api_key", key);
+                } else {
+                  localStorage.removeItem("google_ai_api_key");
+                }
+              } catch {
+                // ignore storage error
+              }
+              setShowApiKeyModal(false);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -537,11 +647,10 @@ export default function PDFCoordinatePicker() {
                       setOrigin(key);
                       setShowOriginMenu(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors ${
-                      origin === key
+                    className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors ${origin === key
                         ? "bg-[var(--accent)] text-white font-semibold"
                         : "text-[#c9cdd6] hover:bg-[#353a4a] hover:text-white"
-                    }`}
+                      }`}
                   >
                     {label}
                   </button>
@@ -597,18 +706,46 @@ export default function PDFCoordinatePicker() {
 
           <div className="w-px h-6 bg-[#3a3f52]" />
 
-          <ToolbarButton
-            onClick={autoPick}
-            disabled={isAutoPicking}
-            title="Auto Pick (AI)"
-          >
-            {isAutoPicking ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Sparkles size={16} />
-            )}
-            <span>{isAutoPicking ? "Picking..." : "Auto Pick"}</span>
-          </ToolbarButton>
+          <div className="flex items-center gap-1.5">
+            <ToolbarButton
+              onClick={() => autoPick()}
+              disabled={isAutoPicking}
+              title="Auto Pick (AI)"
+            >
+              {isAutoPicking ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              <span>{isAutoPicking ? "Picking..." : "Auto Pick"}</span>
+            </ToolbarButton>
+
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              title={
+                userApiKey
+                  ? "Using custom Google AI API key. Click to change."
+                  : hasServerKey
+                    ? "Using server Google AI API key. Click to override."
+                    : "Google AI API key not set. Click to configure."
+              }
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-colors cursor-pointer border ${userApiKey
+                  ? "bg-[#1e2540] border-[#3e4a78] text-[#93c5fd] hover:bg-[#273258]"
+                  : hasServerKey
+                    ? "bg-[#14261c] border-[#22543d] text-[#86efac] hover:bg-[#1a3828]"
+                    : "bg-[#28221b] border-[#5a4325] text-[#fcd34d] hover:bg-[#382e20]"
+                }`}
+            >
+              <Key size={12} />
+              <span className="text-[11px] font-medium hidden sm:inline">
+                {userApiKey
+                  ? "Custom Key"
+                  : hasServerKey
+                    ? "Server Key"
+                    : "Set Key"}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -658,11 +795,10 @@ export default function PDFCoordinatePicker() {
                       setCurrentPage(pageNum);
                       setSelectedPoint(null);
                     }}
-                    className={`w-full rounded-lg overflow-hidden border-2 transition-all ${
-                      currentPage === pageNum
+                    className={`w-full rounded-lg overflow-hidden border-2 transition-all ${currentPage === pageNum
                         ? "border-[var(--accent)] shadow-lg shadow-[var(--accent)]/20"
                         : "border-transparent hover:border-[var(--border)]"
-                    }`}
+                      }`}
                   >
                     <div className="bg-white">
                       <Document file={fileUrl}>
@@ -675,11 +811,10 @@ export default function PDFCoordinatePicker() {
                       </Document>
                     </div>
                     <div
-                      className={`text-[10px] py-1 text-center ${
-                        currentPage === pageNum
+                      className={`text-[10px] py-1 text-center ${currentPage === pageNum
                           ? "text-[var(--accent)]"
                           : "text-[var(--text-secondary)]"
-                      }`}
+                        }`}
                     >
                       {pageNum}
                     </div>
@@ -812,11 +947,10 @@ export default function PDFCoordinatePicker() {
                   <div
                     key={point.id}
                     data-point="true"
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 group ${
-                      isDragging && selectedPoint === point.id
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 group ${isDragging && selectedPoint === point.id
                         ? "cursor-grabbing"
                         : "cursor-grab"
-                    }`}
+                      }`}
                     style={{
                       left: point.screenX * scale,
                       top: point.screenY * scale,
@@ -837,11 +971,10 @@ export default function PDFCoordinatePicker() {
                     }}
                   >
                     <div
-                      className={`w-4 h-4 rounded-full border-2 transition-all ${
-                        selectedPoint === point.id
+                      className={`w-4 h-4 rounded-full border-2 transition-all ${selectedPoint === point.id
                           ? "bg-[var(--accent)] border-white scale-125"
                           : "bg-[var(--accent)]/80 border-white/80 hover:scale-110"
-                      }`}
+                        }`}
                     >
                       <div className="absolute inset-0 rounded-full animate-ping bg-[var(--accent)]/30" />
                     </div>
@@ -970,22 +1103,20 @@ export default function PDFCoordinatePicker() {
                   return (
                     <div
                       key={point.id}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs cursor-pointer transition-all ${
-                        isSelected
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs cursor-pointer transition-all ${isSelected
                           ? "bg-[var(--accent)]/15 border border-[var(--accent)]/30"
                           : "hover:bg-[var(--bg-elevated)] border border-transparent"
-                      } ${!isCurrentPage ? "opacity-50" : ""}`}
+                        } ${!isCurrentPage ? "opacity-50" : ""}`}
                       onClick={() => {
                         setSelectedPoint(point.id);
                         if (!isCurrentPage) setCurrentPage(point.page);
                       }}
                     >
                       <span
-                        className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                          isSelected
+                        className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${isSelected
                             ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/30"
                             : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
-                        }`}
+                          }`}
                       >
                         {index + 1}
                       </span>
@@ -1026,6 +1157,434 @@ export default function PDFCoordinatePicker() {
             <code className="block bg-[var(--bg-primary)] rounded-md p-2 text-[10px] font-mono text-[var(--accent)]/80 leading-relaxed">
               page.drawText(&apos;Hi&apos;, {"{"} x: 50, y: 100 {"}"})
             </code>
+          </div>
+        </div>
+      </div>
+
+      {showApiKeyModal && (
+        <ApiKeyModal
+          isOpen={showApiKeyModal}
+          onClose={() => setShowApiKeyModal(false)}
+          currentKey={userApiKey}
+          hasServerKey={hasServerKey}
+          onSave={(key, remember, shouldAutoPick) => {
+            setUserApiKey(key);
+            try {
+              if (remember && key) {
+                localStorage.setItem("google_ai_api_key", key);
+              } else {
+                localStorage.removeItem("google_ai_api_key");
+              }
+            } catch {
+              // ignore storage error
+            }
+            setShowApiKeyModal(false);
+            if (shouldAutoPick) {
+              autoPick(key);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ApiKeyModal({
+  isOpen,
+  onClose,
+  currentKey,
+  hasServerKey,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentKey: string;
+  hasServerKey: boolean;
+  onSave: (key: string, remember: boolean, andAutoPick?: boolean) => void;
+}) {
+  const [keyInput, setKeyInput] = useState(currentKey);
+  const [showPlain, setShowPlain] = useState(false);
+  const [remember, setRemember] = useState(true);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 99999,
+        backgroundColor: "rgba(5, 7, 13, 0.82)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth: "490px",
+          backgroundColor: "#121622",
+          border: "1px solid #293249",
+          borderRadius: "20px",
+          boxShadow: "0 30px 90px -12px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.06)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Top glowing ambient highlight */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: "15%",
+            right: "15%",
+            height: "2px",
+            background: "linear-gradient(90deg, transparent, #7c6cff, #a78bfa, transparent)",
+          }}
+        />
+
+        {/* Header */}
+        <div
+          style={{
+            padding: "20px 24px 18px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: "1px solid #1e2538",
+            backgroundColor: "#161b29",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div
+              style={{
+                width: "42px",
+                height: "42px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, rgba(124, 108, 255, 0.28), rgba(99, 102, 241, 0.12))",
+                border: "1px solid rgba(124, 108, 255, 0.4)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#a599ff",
+                flexShrink: 0,
+                boxShadow: "0 0 20px rgba(124, 108, 255, 0.2)",
+              }}
+            >
+              <Key size={20} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#ffffff", letterSpacing: "-0.01em" }}>
+                Google AI API Key
+              </h3>
+              <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "#8d96ae" }}>
+                Gemini 3.1 Flash Lite Auto-Pick Setup
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px",
+              borderRadius: "10px",
+              color: "#8d96ae",
+              background: "rgba(255, 255, 255, 0.04)",
+              border: "1px solid rgba(255, 255, 255, 0.06)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div
+          style={{
+            padding: "22px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "18px",
+            backgroundColor: "#121622",
+          }}
+        >
+          {/* Status Alert Banner */}
+          {hasServerKey ? (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(16, 42, 28, 0.75)",
+                border: "1px solid #1f5235",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <ShieldCheck size={16} color="#4ade80" />
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#86efac" }}>
+                    Server Key Active
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "2px 8px",
+                    borderRadius: "9999px",
+                    backgroundColor: "#153d26",
+                    border: "1px solid #23613c",
+                    color: "#86efac",
+                  }}
+                >
+                  Ready to Use
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "rgba(187, 247, 208, 0.85)", lineHeight: 1.45 }}>
+                A server default key is active. Leave the field below blank to use it, or enter your personal key to override.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(42, 30, 14, 0.8)",
+                border: "1px solid #573f1a",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Lock size={16} color="#fcd34d" />
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#fde68a" }}>
+                  API Key Required for AI Features
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "rgba(253, 230, 138, 0.85)", lineHeight: 1.45 }}>
+                No default key configured on server. Please enter your Google Gemini API key to enable AI Auto-Pick.
+              </p>
+            </div>
+          )}
+
+          {/* Key Input Section */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#d2d8eb", letterSpacing: "0.01em" }}>
+                Google Gemini API Key
+              </label>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: "12px",
+                  color: "#9d92ff",
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontWeight: 500,
+                }}
+              >
+                <span>Get free API key</span>
+                <ExternalLink size={12} />
+              </a>
+            </div>
+
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                backgroundColor: "#090c14",
+                border: "1px solid #273047",
+                borderRadius: "12px",
+                padding: "0 14px",
+                boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4)",
+              }}
+            >
+              <input
+                type={showPlain ? "text" : "password"}
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder={hasServerKey ? "Leave empty to use server default key" : "AIzaSy..."}
+                style={{
+                  width: "100%",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "#ffffff",
+                  padding: "12px 34px 12px 0",
+                  fontSize: "13px",
+                  fontFamily: "ui-monospace, monospace",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPlain(!showPlain)}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  padding: "6px",
+                  borderRadius: "6px",
+                  color: "#8d96ae",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                title={showPlain ? "Hide Key" : "Show Key"}
+              >
+                {showPlain ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Remember Option */}
+          <div>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                style={{
+                  marginTop: "2px",
+                  width: "16px",
+                  height: "16px",
+                  borderRadius: "4px",
+                  accentColor: "#7c6cff",
+                  cursor: "pointer",
+                }}
+              />
+              <div style={{ fontSize: "12px", lineHeight: 1.4 }}>
+                <span style={{ color: "#d2d8eb", fontWeight: 500 }}>
+                  Remember in this browser (localStorage)
+                </span>
+                <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#798299" }}>
+                  Saved on this device only. Uncheck to use for current session only.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Privacy Notice Card */}
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: "12px",
+              backgroundColor: "#090c14",
+              border: "1px solid #1c2336",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+            }}
+          >
+            <div
+              style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "8px",
+                background: "rgba(124, 108, 255, 0.15)",
+                color: "#a599ff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                marginTop: "1px",
+              }}
+            >
+              <Lock size={14} />
+            </div>
+            <div style={{ fontSize: "11px", lineHeight: 1.5, color: "#818ba0" }}>
+              <span style={{ fontWeight: 600, color: "#c8d0e5", display: "block", marginBottom: "2px" }}>
+                🔒 Privacy & Zero-Log Promise
+              </span>
+              Your API key stays exclusively in your local browser storage and is transmitted via request headers only when running Auto-Pick. <span style={{ color: "#a5b0cb", fontWeight: 500 }}>This server never logs, records, or stores your API key.</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div
+          style={{
+            padding: "16px 24px",
+            borderTop: "1px solid #1e2538",
+            backgroundColor: "#161b29",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            {currentKey ? (
+              <button
+                onClick={() => {
+                  setKeyInput("");
+                  onSave("", false, false);
+                }}
+                style={{
+                  fontSize: "12px",
+                  color: "#f87171",
+                  background: "transparent",
+                  border: "none",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Clear Saved Key
+              </button>
+            ) : <span />}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "9px 18px",
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "#949cb2",
+                background: "rgba(255, 255, 255, 0.04)",
+                border: "1px solid rgba(255, 255, 255, 0.06)",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSave(keyInput.trim(), remember, true)}
+              style={{
+                padding: "9px 22px",
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#ffffff",
+                background: "linear-gradient(135deg, #7c6cff, #5b4bff)",
+                border: "none",
+                cursor: "pointer",
+                boxShadow: "0 4px 18px rgba(124, 108, 255, 0.4)",
+              }}
+            >
+              Save & Apply
+            </button>
           </div>
         </div>
       </div>
@@ -1099,11 +1658,10 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
-        active
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${active
           ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25"
           : "text-[#9499b0] hover:text-white hover:bg-[#2d323e]"
-      } ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
+        } ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
     >
       {children}
     </button>

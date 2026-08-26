@@ -42,12 +42,28 @@ interface AutoPickResult {
   y: number;
 }
 
-export async function POST(request: NextRequest) {
+export async function GET() {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey || apiKey === "your_google_studio_api_key_here") {
+  const hasServerKey = !!apiKey && apiKey !== "your_google_studio_api_key_here" && apiKey !== "your_google_ai_api_key_here";
+  return NextResponse.json({ hasServerKey });
+}
+
+export async function POST(request: NextRequest) {
+  const headerKey = request.headers.get("x-api-key")?.trim();
+  const serverKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey =
+    headerKey ||
+    (serverKey && serverKey !== "your_google_studio_api_key_here" && serverKey !== "your_google_ai_api_key_here"
+      ? serverKey
+      : null);
+
+  if (!apiKey) {
     return NextResponse.json(
-      { error: "GOOGLE_AI_API_KEY not configured in .env.local" },
-      { status: 500 }
+      {
+        error: "Google AI API Key is required. Please provide a key in settings or configure GOOGLE_AI_API_KEY on the server.",
+        code: "API_KEY_REQUIRED",
+      },
+      { status: 400 }
     );
   }
 
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
     );
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
 
     const result = await model.generateContent(buildPrompt(origin) + pageContext);
     const responseText = result.response.text();
