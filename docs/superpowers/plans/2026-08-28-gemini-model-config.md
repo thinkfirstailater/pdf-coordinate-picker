@@ -30,14 +30,14 @@
 - Produces: `GET /api/auto-pick` returns `{ hasServerKey: boolean, serverModel: string }`
 - Produces: `POST /api/auto-pick` accepts optional `model?: string` in JSON body
 
-- [ ] **Step 1: Install new SDK, remove old**
+- [x] **Step 1: Install new SDK, remove old**
 
 ```bash
 npm install @google/genai
 npm uninstall @google/generative-ai
 ```
 
-- [ ] **Step 2: Update `route.ts` — rewrite imports and model initialization**
+- [x] **Step 2: Update `route.ts` — rewrite imports and model initialization**
 
 Replace the entire `route.ts` with the migrated version:
 
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 3: Update `.env.example`**
+- [x] **Step 3: Update `.env.example`**
 
 Add `GEMINI_MODEL` entry after `GOOGLE_AI_API_KEY`:
 
@@ -198,7 +198,7 @@ GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
-- [ ] **Step 4: Verify TypeScript compiles**
+- [x] **Step 4: Verify TypeScript compiles**
 
 ```bash
 npm run build 2>&1 | head -50
@@ -206,7 +206,7 @@ npm run build 2>&1 | head -50
 
 Expected: no TypeScript errors related to `@google/genai` or `@google/generative-ai`.
 
-- [ ] **Step 5: Manual smoke test**
+- [x] **Step 5: Manual smoke test**
 
 ```bash
 # Start dev server
@@ -223,7 +223,7 @@ If you have `GEMINI_MODEL=gemini-2.0-flash` in `.env.local`:
 { "hasServerKey": false, "serverModel": "gemini-2.0-flash" }
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json package-lock.json src/app/api/auto-pick/route.ts .env.example
@@ -242,7 +242,7 @@ git commit -m "feat: migrate to @google/genai SDK and add GEMINI_MODEL env suppo
 - Produces: `GET /api/models` with header `X-API-Key: <key>` returns `{ models: [{ name: string, displayName: string }] }`
 - Error: `{ error: string }` with status 400 (no key) or 500 (API error)
 
-- [ ] **Step 1: Create `src/app/api/models/route.ts`**
+- [x] **Step 1: Create `src/app/api/models/route.ts`**
 
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
@@ -291,7 +291,7 @@ export async function GET(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Manual smoke test**
+- [x] **Step 2: Manual smoke test**
 
 ```bash
 # Replace YOUR_KEY with a real Google AI API key
@@ -314,7 +314,7 @@ curl http://localhost:3000/api/models
 ```
 Expected: `{ "error": "X-API-Key header is required" }` with status 400.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/app/api/models/route.ts
@@ -334,7 +334,7 @@ git commit -m "feat: add /api/models route with generateContent filter"
 - Produces: `userModel: string` state available to pass to `ApiKeyModal` in Task 4
 - Produces: `autoPick()` sends `model` in POST body when BYOK
 
-- [ ] **Step 1: Add `userModel` state and load from localStorage**
+- [x] **Step 1: Add `userModel` state and load from localStorage**
 
 Find the block around line 110 where `userApiKey` state is declared:
 ```typescript
@@ -351,7 +351,7 @@ const [hasServerKey, setHasServerKey] = useState(false);
 const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 ```
 
-- [ ] **Step 2: Load `userModel` from localStorage in the existing `useEffect`**
+- [x] **Step 2: Load `userModel` from localStorage in the existing `useEffect`**
 
 Find the existing useEffect around line 120 that loads the saved key:
 ```typescript
@@ -379,7 +379,7 @@ useEffect(() => {
   ...
 ```
 
-- [ ] **Step 3: Update `autoPick()` to send `model` when using BYOK**
+- [x] **Step 3: Update `autoPick()` to send `model` when using BYOK**
 
 Find in `autoPick()` the body of the fetch POST call (around line 412):
 ```typescript
@@ -409,7 +409,7 @@ Also add `userModel` to the `autoPick` `useCallback` dependency array:
 [fileUrl, isAutoPicking, pageSize, userApiKey, userModel, hasServerKey, currentPage, origin]
 ```
 
-- [ ] **Step 4: Update the `onSave` call sites to handle new signature**
+- [x] **Step 4: Update the `onSave` call sites to handle new signature**
 
 The `ApiKeyModal.onSave` will be updated in Task 4 to `(key: string, model: string, remember: boolean, andAutoPick?: boolean) => void`. Update the call site in `PDFCoordinatePicker` where `ApiKeyModal` is rendered (there are 2 instances — upload screen and main screen). Find:
 
@@ -449,7 +449,7 @@ onSave={(key, model, remember) => {
 }}
 ```
 
-- [ ] **Step 5: Pass `currentModel` and `serverModel` props to `ApiKeyModal`**
+- [x] **Step 5: Pass `currentModel` and `serverModel` props to `ApiKeyModal`**
 
 Find all `<ApiKeyModal` usages and add the new props:
 ```tsx
@@ -465,7 +465,7 @@ Find all `<ApiKeyModal` usages and add the new props:
 />
 ```
 
-- [ ] **Step 6: Verify no TypeScript errors**
+- [x] **Step 6: Verify no TypeScript errors**
 
 ```bash
 npm run build 2>&1 | grep -E "error|Error"
@@ -473,7 +473,7 @@ npm run build 2>&1 | grep -E "error|Error"
 
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/components/PDFCoordinatePicker.tsx
@@ -492,7 +492,7 @@ git commit -m "feat: add userModel state and send model in autoPick POST body"
 - Consumes: `currentModel: string` prop (Task 3)
 - Consumes: `onSave(key: string, model: string, remember: boolean, andAutoPick?: boolean)` signature (Task 3)
 
-- [ ] **Step 1: Update `ApiKeyModal` props interface**
+- [x] **Step 1: Update `ApiKeyModal` props interface**
 
 Find the `ApiKeyModal` function definition (around line 1195):
 ```typescript
@@ -530,7 +530,7 @@ function ApiKeyModal({
 })
 ```
 
-- [ ] **Step 2: Add model-related state inside `ApiKeyModal`**
+- [x] **Step 2: Add model-related state inside `ApiKeyModal`**
 
 Find where `ApiKeyModal` local state is declared:
 ```typescript
@@ -551,7 +551,7 @@ const [modelListLoading, setModelListLoading] = useState(false);
 const [modelListError, setModelListError] = useState<string | null>(null);
 ```
 
-- [ ] **Step 3: Add `fetchModels` function inside `ApiKeyModal`**
+- [x] **Step 3: Add `fetchModels` function inside `ApiKeyModal`**
 
 Add this function inside the component body (before the `if (!isOpen) return null` guard):
 
@@ -580,7 +580,7 @@ async function fetchModels(key: string) {
 }
 ```
 
-- [ ] **Step 4: Add model selector UI section inside the Content Body `<div>`**
+- [x] **Step 4: Add model selector UI section inside the Content Body `<div>`**
 
 Find the `{/* Remember Option */}` section in the modal body. Insert the model selector **above** it (only when `keyInput` has a value):
 
@@ -697,7 +697,7 @@ Find the `{/* Remember Option */}` section in the modal body. Insert the model s
 )}
 ```
 
-- [ ] **Step 5: Update footer "Save & Apply" button to pass `modelInput`**
+- [x] **Step 5: Update footer "Save & Apply" button to pass `modelInput`**
 
 Find in the modal footer:
 ```tsx
@@ -717,7 +717,7 @@ onClick={() => {
 }}
 ```
 
-- [ ] **Step 6: Close dropdown when clicking outside**
+- [x] **Step 6: Close dropdown when clicking outside**
 
 Add a `useEffect` inside `ApiKeyModal` to close the dropdown on outside click:
 
@@ -740,7 +740,7 @@ Then add `data-model-dropdown` attribute to the dropdown wrapper `<div style={{ 
 <div style={{ position: "relative" }} data-model-dropdown="">
 ```
 
-- [ ] **Step 7: Build check**
+- [x] **Step 7: Build check**
 
 ```bash
 npm run build 2>&1 | grep -E "error TS|Error"
@@ -748,7 +748,7 @@ npm run build 2>&1 | grep -E "error TS|Error"
 
 Expected: no errors.
 
-- [ ] **Step 8: Manual end-to-end test**
+- [x] **Step 8: Manual end-to-end test**
 
 1. Start dev server: `npm run dev`
 2. Open `http://localhost:3000`
@@ -763,7 +763,7 @@ Expected: no errors.
 11. Reload page — verify model is restored from localStorage
 12. Upload a PDF and click "Auto Pick" — verify it uses the selected model (check network tab, POST body should have `{ "model": "gemini-2.0-flash", ... }`)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/components/PDFCoordinatePicker.tsx
