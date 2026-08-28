@@ -45,7 +45,7 @@ interface AutoPickResult {
 }
 
 function isValidServerKey(key: string | undefined): key is string {
-  return !!key && key !== "your_google_studio_api_key_here" && key !== "your_google_ai_api_key_here";
+  return !!key && key.trim().length > 0;
 }
 
 export async function GET() {

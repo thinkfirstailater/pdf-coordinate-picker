@@ -418,7 +418,7 @@ export default function PDFCoordinatePicker() {
             pageWidth: pageSize.width,
             pageHeight: pageSize.height,
             origin,
-            ...(activeKey && !hasServerKey ? { model: userModel } : {}),
+            ...(activeKey ? { model: userModel } : {}),
           }),
         });
 
@@ -1224,6 +1224,10 @@ function ApiKeyModal({
   const [modelListOpen, setModelListOpen] = useState(false);
   const [modelListLoading, setModelListLoading] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setModelList([]);
+  }, [keyInput]);
 
   useEffect(() => {
     if (!modelListOpen) return;
