@@ -108,6 +108,7 @@ export default function PDFCoordinatePicker() {
   } | null>(null);
   const [isAutoPicking, setIsAutoPicking] = useState(false);
   const [userApiKey, setUserApiKey] = useState("");
+  const [userModel, setUserModel] = useState("gemini-3.5-flash-lite");
   const [hasServerKey, setHasServerKey] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
@@ -121,6 +122,8 @@ export default function PDFCoordinatePicker() {
     try {
       const savedKey = localStorage.getItem("google_ai_api_key") || "";
       if (savedKey) setUserApiKey(savedKey);
+      const savedModel = localStorage.getItem("google_ai_model") || "";
+      if (savedModel) setUserModel(savedModel);
     } catch {
       // localStorage may be unavailable
     }
@@ -415,6 +418,7 @@ export default function PDFCoordinatePicker() {
             pageWidth: pageSize.width,
             pageHeight: pageSize.height,
             origin,
+            ...(activeKey && !hasServerKey ? { model: userModel } : {}),
           }),
         });
 
@@ -465,7 +469,7 @@ export default function PDFCoordinatePicker() {
         setIsAutoPicking(false);
       }
     },
-    [fileUrl, isAutoPicking, pageSize, userApiKey, hasServerKey, currentPage, origin]
+    [fileUrl, isAutoPicking, pageSize, userApiKey, userModel, hasServerKey, currentPage, origin]
   );
 
   const currentPagePoints = useMemo(
@@ -582,14 +586,18 @@ export default function PDFCoordinatePicker() {
             isOpen={showApiKeyModal}
             onClose={() => setShowApiKeyModal(false)}
             currentKey={userApiKey}
+            currentModel={userModel}
             hasServerKey={hasServerKey}
-            onSave={(key, remember) => {
+            onSave={(key, model, remember) => {
               setUserApiKey(key);
+              setUserModel(model);
               try {
                 if (remember && key) {
                   localStorage.setItem("google_ai_api_key", key);
+                  localStorage.setItem("google_ai_model", model);
                 } else {
                   localStorage.removeItem("google_ai_api_key");
+                  localStorage.removeItem("google_ai_model");
                 }
               } catch {
                 // ignore storage error
@@ -1166,14 +1174,18 @@ export default function PDFCoordinatePicker() {
           isOpen={showApiKeyModal}
           onClose={() => setShowApiKeyModal(false)}
           currentKey={userApiKey}
+          currentModel={userModel}
           hasServerKey={hasServerKey}
-          onSave={(key, remember, shouldAutoPick) => {
+          onSave={(key, model, remember, shouldAutoPick) => {
             setUserApiKey(key);
+            setUserModel(model);
             try {
               if (remember && key) {
                 localStorage.setItem("google_ai_api_key", key);
+                localStorage.setItem("google_ai_model", model);
               } else {
                 localStorage.removeItem("google_ai_api_key");
+                localStorage.removeItem("google_ai_model");
               }
             } catch {
               // ignore storage error
@@ -1193,18 +1205,60 @@ function ApiKeyModal({
   isOpen,
   onClose,
   currentKey,
+  currentModel,
   hasServerKey,
   onSave,
 }: {
   isOpen: boolean;
   onClose: () => void;
   currentKey: string;
+  currentModel: string;
   hasServerKey: boolean;
-  onSave: (key: string, remember: boolean, andAutoPick?: boolean) => void;
+  onSave: (key: string, model: string, remember: boolean, andAutoPick?: boolean) => void;
 }) {
   const [keyInput, setKeyInput] = useState(currentKey);
+  const [modelInput, setModelInput] = useState(currentModel || "gemini-3.5-flash-lite");
   const [showPlain, setShowPlain] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [modelList, setModelList] = useState<{ name: string; displayName: string }[]>([]);
+  const [modelListOpen, setModelListOpen] = useState(false);
+  const [modelListLoading, setModelListLoading] = useState(false);
+  const [modelListError, setModelListError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!modelListOpen) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-model-dropdown]")) {
+        setModelListOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [modelListOpen]);
+
+  async function fetchModels(key: string) {
+    if (!key.trim()) return;
+    setModelListLoading(true);
+    setModelListError(null);
+    try {
+      const res = await fetch("/api/models", {
+        headers: { "X-API-Key": key.trim() },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setModelListError(data.error ?? "Failed to fetch models");
+        setModelList([]);
+      } else {
+        setModelList(data.models ?? []);
+      }
+    } catch {
+      setModelListError("Network error — check your API key and connection");
+      setModelList([]);
+    } finally {
+      setModelListLoading(false);
+    }
+  }
 
   if (!isOpen) return null;
 
@@ -1286,7 +1340,7 @@ function ApiKeyModal({
                 Google AI API Key
               </h3>
               <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "#8d96ae" }}>
-                Gemini 3.1 Flash Lite Auto-Pick Setup
+                Configure Gemini API for Auto-Pick
               </p>
             </div>
           </div>
@@ -1457,6 +1511,122 @@ function ApiKeyModal({
             </div>
           </div>
 
+          {/* Model Selector — only shown when user has a key (BYOK) */}
+          {keyInput.trim() && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#d2d8eb", letterSpacing: "0.01em" }}>
+                Gemini Model
+              </label>
+
+              {/* Custom dropdown trigger */}
+              <div style={{ position: "relative" }} data-model-dropdown="">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opening = !modelListOpen;
+                    setModelListOpen(opening);
+                    if (opening && modelList.length === 0 && !modelListLoading) {
+                      fetchModels(keyInput);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: "#090c14",
+                    border: "1px solid #273047",
+                    borderRadius: "12px",
+                    padding: "11px 14px",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontFamily: "ui-monospace, monospace",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {modelInput || "gemini-3.5-flash-lite"}
+                  </span>
+                  <span style={{ color: "#8d96ae", fontSize: "12px", marginLeft: "8px", flexShrink: 0 }}>
+                    {modelListLoading ? "⏳" : "▾"}
+                  </span>
+                </button>
+
+                {/* Dropdown list */}
+                {modelListOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: 0,
+                      right: 0,
+                      backgroundColor: "#0d1120",
+                      border: "1px solid #273047",
+                      borderRadius: "12px",
+                      zIndex: 10,
+                      maxHeight: "220px",
+                      overflowY: "auto",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                    }}
+                  >
+                    {modelListLoading && (
+                      <div style={{ padding: "12px 14px", color: "#8d96ae", fontSize: "12px" }}>
+                        Fetching models...
+                      </div>
+                    )}
+                    {modelListError && (
+                      <div style={{ padding: "12px 14px", color: "#f87171", fontSize: "12px" }}>
+                        {modelListError}
+                      </div>
+                    )}
+                    {!modelListLoading && !modelListError && modelList.length === 0 && (
+                      <div style={{ padding: "12px 14px", color: "#8d96ae", fontSize: "12px" }}>
+                        No models found
+                      </div>
+                    )}
+                    {modelList.map((m) => (
+                      <button
+                        key={m.name}
+                        type="button"
+                        onClick={() => {
+                          setModelInput(m.name);
+                          setModelListOpen(false);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 14px",
+                          background: modelInput === m.name ? "rgba(124, 108, 255, 0.15)" : "transparent",
+                          border: "none",
+                          color: modelInput === m.name ? "#a599ff" : "#c8d0e5",
+                          fontSize: "13px",
+                          fontFamily: "ui-monospace, monospace",
+                          cursor: "pointer",
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontWeight: modelInput === m.name ? 600 : 400 }}>{m.name}</span>
+                        {m.displayName && m.displayName !== m.name && (
+                          <span style={{ marginLeft: "8px", fontSize: "11px", color: "#5d6880" }}>
+                            {m.displayName}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <p style={{ margin: 0, fontSize: "11px", color: "#5d6880" }}>
+                Click to load available models. Default: gemini-3.5-flash-lite
+              </p>
+            </div>
+          )}
+
           {/* Remember Option */}
           <div>
             <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", userSelect: "none" }}>
@@ -1537,7 +1707,8 @@ function ApiKeyModal({
               <button
                 onClick={() => {
                   setKeyInput("");
-                  onSave("", false, false);
+                  setModelInput("gemini-3.5-flash-lite");
+                  onSave("", "gemini-3.5-flash-lite", false, false);
                 }}
                 style={{
                   fontSize: "12px",
@@ -1570,7 +1741,7 @@ function ApiKeyModal({
               Cancel
             </button>
             <button
-              onClick={() => onSave(keyInput.trim(), remember, true)}
+              onClick={() => onSave(keyInput.trim(), modelInput || "gemini-3.5-flash-lite", remember, true)}
               style={{
                 padding: "9px 22px",
                 borderRadius: "10px",
