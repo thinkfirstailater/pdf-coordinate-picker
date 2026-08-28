@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 function buildPrompt(origin: string) {
   return `You are a PDF form analyzer. I will give you text items extracted from ONE page of a PDF form with coordinates.
@@ -42,10 +44,15 @@ interface AutoPickResult {
   y: number;
 }
 
+function isValidServerKey(key: string | undefined): key is string {
+  return !!key && key.trim().length > 0;
+}
+
 export async function GET() {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
-  const hasServerKey = !!apiKey && apiKey !== "your_google_studio_api_key_here" && apiKey !== "your_google_ai_api_key_here";
-  return NextResponse.json({ hasServerKey });
+  const hasServerKey = isValidServerKey(apiKey);
+  const serverModel = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  return NextResponse.json({ hasServerKey, serverModel });
 }
 
 export async function POST(request: NextRequest) {
@@ -53,9 +60,7 @@ export async function POST(request: NextRequest) {
   const serverKey = process.env.GOOGLE_AI_API_KEY;
   const apiKey =
     headerKey ||
-    (serverKey && serverKey !== "your_google_studio_api_key_here" && serverKey !== "your_google_ai_api_key_here"
-      ? serverKey
-      : null);
+    (isValidServerKey(serverKey) ? serverKey : null);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -69,12 +74,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { items, page, pageWidth, pageHeight, origin = "bottom-left" } = body as {
+    const { items, page, pageWidth, pageHeight, origin = "bottom-left", model } = body as {
       items: TextItem[];
       page: number;
       pageWidth: number;
       pageHeight: number;
       origin?: string;
+      model?: string;
     };
 
     if (!items?.length) {
@@ -84,17 +90,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const activeModel = model || process.env.GEMINI_MODEL || DEFAULT_MODEL;
+
     const pageContext = JSON.stringify(
       { page, width: pageWidth, height: pageHeight, items },
       null,
       2
     );
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
-
-    const result = await model.generateContent(buildPrompt(origin) + pageContext);
-    const responseText = result.response.text();
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: activeModel,
+      contents: buildPrompt(origin) + pageContext,
+    });
+    const responseText = response.text ?? "";
 
     const jsonMatch = responseText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
